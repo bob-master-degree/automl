@@ -13,10 +13,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://${AIRFLOW_API_CONTAINER_NAME}:${AIRFLOW_API_PORT}/execution/'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
+    AIRFLOW__METRICS__STATSD_ON: 'True'
+    AIRFLOW__METRICS__STATSD_HOST: ${STATSD_HOST}
+    AIRFLOW__METRICS__STATSD_PORT: ${STATSD_PORT}
+    AIRFLOW__METRICS__STATSD_PREFIX: 'airflow'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/scripts
+    - ${AIRFLOW_PROJ_DIR:-.}/scripts:/opt/airflow/scripts
     - mlflow-data:${MLFLOW_DATA_PATH}
   user: "${AIRFLOW_UID}:0"
   depends_on:
@@ -154,6 +158,50 @@ services:
       - mlflow-data:${MLFLOW_DATA_PATH}
     restart: always
 
+  statsd-exporter:
+    image: ${STATSD_IMAGE}
+    container_name: ${STATSD_CONTAINER_NAME}
+    volumes:
+      - ${STATSD_CONFIG_PATH}:/home/statsd-mapping-configs.yaml
+    entrypoint: [ "/bin/sh", "-c", "--" ]
+    command: [ "statsd_exporter --statsd.listen-udp=:${STATSD_PORT} --web.listen-address=:${STATSD_WEB_PORT} --log.level debug --statsd.mapping-config=/home/statsd-mapping-configs.yaml" ]
+    ports:
+      - "${STATSD_WEB_PORT}:${STATSD_WEB_PORT}"
+      - "${STATSD_PORT}:${STATSD_PORT}"
+    expose:
+      - "${STATSD_PORT}/udp"
+    restart: always
+
+  prometheus:
+    image: ${PROMETHEUS_IMAGE}
+    container_name: ${PROMETHEUS_CONTAINER_NAME}
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "${PROMETHEUS_PORT}:${PROMETHEUS_PORT}"
+    volumes:
+      - ${PROMETHEUS_CONFIG_PATH}:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:${PROMETHEUS_DATA_PATH}
+    restart: always
+
+  grafana:
+    image: ${GRAFANA_IMAGE}
+    container_name: ${GRAFANA_CONTAINER_NAME}
+    ports:
+      - "${GRAFANA_PORT}:${GRAFANA_PORT}"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    volumes:
+      - grafana-data:${GRAFANA_DATA_PATH}
+      - ${GRAFANA_DATASOURCES_PATH}:/etc/grafana/provisioning/datasources/
+    depends_on:
+      - prometheus
+    restart: always
+
 volumes:
   postgres-data:
   mlflow-data:
+  prometheus-data:
+  grafana-data:
