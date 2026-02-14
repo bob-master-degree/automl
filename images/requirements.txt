@@ -1,0 +1,6 @@
+kaggle
+mlflow
+pandas
+python-dotenv
+scikit-learn
+psycopg2-binary
