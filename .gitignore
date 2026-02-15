@@ -1,0 +1,6 @@
+logs
+plugins
+config
+dags
+.DS_Store
+.kaggle.env
