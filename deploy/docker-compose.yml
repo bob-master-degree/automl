@@ -160,6 +160,8 @@ services:
   mlflow:
     build:
       context: docker/mlflow
+      args:
+        AIRFLOW_UID: ${AIRFLOW_UID}
     container_name: ${MLFLOW_CONTAINER}
     ports:
       - "${MLFLOW_API_PORT}:${MLFLOW_API_PORT}"
