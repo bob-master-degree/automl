@@ -1,6 +1,27 @@
-kaggle
-mlflow
+# Core Data
 pandas
+numpy
+pyarrow
+
+# Data Sources
+kaggle
 python-dotenv
+
+# ML
+mlflow
 scikit-learn
+xgboost
+lightgbm
+
+# Database
 psycopg2-binary
+
+# Visualization
+matplotlib
+seaborn
+
+# Monitoring
+grafana-api
+prometheus-client
+evidently
+alibi-detect
