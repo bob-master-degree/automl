@@ -1,4 +1,4 @@
-FROM ghcr.io/mlflow/mlflow:v2.8.1
+FROM ghcr.io/mlflow/mlflow:v3.8.1
 
 ARG AIRFLOW_UID
 ARG AIRFLOW_GID=0
