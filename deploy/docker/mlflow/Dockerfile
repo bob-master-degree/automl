@@ -14,4 +14,5 @@ RUN mkdir -p /mlflow && \
 CMD ["mlflow", "server", \
      "--host", "0.0.0.0", \
      "--backend-store-uri", "/mlflow/mlruns", \
-     "--default-artifact-root", "/mlflow/artifacts"]
+     "--default-artifact-root", "/mlflow/artifacts", \
+     "--allowed-hosts", "*"]
