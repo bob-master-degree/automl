@@ -46,3 +46,11 @@ docker-compose up -d
 | MLflow     | [http://localhost:5000](http://localhost:5000) | —              |
 | Prometheus | [http://localhost:9090](http://localhost:9090) | —              |
 | Grafana    | [http://localhost:3000](http://localhost:3000) | admin / admin  |
+
+## Разработка
+
+### Dags
+
+Все `DAG`-файлы для `Airflow` необходимо помещать в директорию `content/dags`.
+
+`Airflow` будет автоматически их подхватывать и отображать в интерфейсе.
