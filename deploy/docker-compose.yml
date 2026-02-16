@@ -13,9 +13,10 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__METRICS__STATSD_ON: 'True'
-    AIRFLOW__METRICS__STATSD_HOST: "statsd-exporter"
-    AIRFLOW__METRICS__STATSD_PORT: ${STATSD_PORT}
+    AIRFLOW__METRICS__STATSD_HOST: ${STATSD_CONTAINER}
+    AIRFLOW__METRICS__STATSD_PORT: ${STATSD_LISTEN_PORT}
     AIRFLOW__METRICS__STATSD_PREFIX: 'airflow'
+    MLFLOW_TRACKING_URI: 'http://${MLFLOW_CONTAINER}:${MLFLOW_API_PORT}'
   env_file:
     - .kaggle.env
   volumes:
@@ -99,13 +100,13 @@ services:
     container_name: ${AIRFLOW_API_CONTAINER}
     command: api-server
     ports:
-      - "${AIRFLOW_API_PORT}:${AIRFLOW_API_PORT}"
+      - "${AIRFLOW_API_PORT}:8080"
     healthcheck:
       test: [
         "CMD",
         "curl",
         "--fail",
-        "http://localhost:${AIRFLOW_API_PORT}/api/v2/version"
+        "http://localhost:8080/api/v2/version"
       ]
       interval: 30s
       timeout: 10s
@@ -145,7 +146,7 @@ services:
         "CMD",
         "curl",
         "--fail",
-        "http://localhost:${AIRFLOW_SCHEDULER_PORT}/health"
+        "http://localhost:8974/health"
       ]
       interval: 30s
       timeout: 10s
@@ -161,16 +162,16 @@ services:
     build:
       context: docker/mlflow
       args:
-        AIRFLOW_UID: ${AIRFLOW_UID}
+        MLFLOW_DATA_PATH: ${MLFLOW_DATA_PATH}
     container_name: ${MLFLOW_CONTAINER}
     ports:
-      - "${MLFLOW_API_PORT}:${MLFLOW_API_PORT}"
+      - "${MLFLOW_API_PORT}:5000"
     healthcheck:
       test: [
         "CMD",
         "curl",
         "-f",
-        "http://localhost:${MLFLOW_API_PORT}/health"
+        "http://localhost:5000/health"
       ]
       interval: 30s
       timeout: 10s
@@ -185,15 +186,15 @@ services:
     container_name: ${STATSD_CONTAINER}
     entrypoint: statsd_exporter
     command:
-      - "--statsd.listen-udp=:${STATSD_PORT}"
+      - "--statsd.listen-udp=:${STATSD_LISTEN_PORT}"
       - "--web.listen-address=:${STATSD_API_PORT}"
       - "--log.level=debug"
       - "--statsd.mapping-config=/etc/statsd-exporter/mapping.yml"
     ports:
       - "${STATSD_API_PORT}:${STATSD_API_PORT}"
-      - "${STATSD_PORT}:${STATSD_PORT}"
+      - "${STATSD_LISTEN_PORT}:${STATSD_LISTEN_PORT}"
     expose:
-      - "${STATSD_PORT}/udp"
+      - "${STATSD_LISTEN_PORT}/udp"
     volumes:
       - ${STATSD_CONFIG}:/etc/statsd-exporter/mapping.yml:ro
     restart: always
@@ -202,6 +203,7 @@ services:
     image: ${PROMETHEUS_IMAGE}
     container_name: ${PROMETHEUS_CONTAINER}
     command:
+      - "--web.listen-address=:${PROMETHEUS_API_PORT}"
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
     ports:
@@ -215,7 +217,7 @@ services:
     image: ${GRAFANA_IMAGE}
     container_name: ${GRAFANA_CONTAINER}
     ports:
-      - "${GRAFANA_API_PORT}:${GRAFANA_API_PORT}"
+      - "${GRAFANA_API_PORT}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
