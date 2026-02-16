@@ -1,3 +1,12 @@
+networks:
+  public-network:
+    driver: bridge
+    internal: false
+    name: "public-network"
+  internal-network:
+    internal: true
+    name: "internal-network"
+
 x-airflow-common: &airflow-common
   build:
     context: ./docker/airflow
@@ -9,14 +18,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://${AIRFLOW_API_CONTAINER}:${AIRFLOW_API_PORT}/execution/'
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://${AIRFLOW_API_CONTAINER}:8080/execution/'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__METRICS__STATSD_ON: 'True'
     AIRFLOW__METRICS__STATSD_HOST: ${STATSD_CONTAINER}
-    AIRFLOW__METRICS__STATSD_PORT: ${STATSD_LISTEN_PORT}
+    AIRFLOW__METRICS__STATSD_PORT: '9125'
     AIRFLOW__METRICS__STATSD_PREFIX: 'airflow'
-    MLFLOW_TRACKING_URI: 'http://${MLFLOW_CONTAINER}:${MLFLOW_API_PORT}'
+    MLFLOW_TRACKING_URI: 'http://${MLFLOW_CONTAINER}:5000'
   env_file:
     - .kaggle.env
   volumes:
@@ -26,6 +35,9 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/scripts:/opt/airflow/scripts
     - mlflow-data:${MLFLOW_DATA_PATH}
+  networks:
+    public-network:
+    internal-network:
   user: "${AIRFLOW_UID}:0"
   depends_on:
     &airflow-common-depends-on
@@ -33,6 +45,29 @@ x-airflow-common: &airflow-common
       condition: service_healthy
 
 services:
+  traefik:
+    image: ${TRAEFIK_IMAGE}
+    container_name: ${TRAEFIK_CONTAINER}
+    ports:
+      - "80:80"
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+      - type: bind
+        source: ./configs/traefik/main.yml
+        target: /etc/traefik/traefik.yml
+        read_only: true
+    networks:
+      public-network:
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.${TRAEFIK_CONTAINER}.loadbalancer.server.port=8080
+      - traefik.http.routers.${TRAEFIK_CONTAINER}.entrypoints=web_insecure
+      - traefik.http.routers.${TRAEFIK_CONTAINER}.rule=Host(`${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.${TRAEFIK_CONTAINER}.service=api@internal
+
   postgres:
     image: ${DB_IMAGE}
     container_name: ${DB_CONTAINER}
@@ -41,7 +76,11 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - postgres-data:${DB_DATA_PATH}
+      - type: volume
+        source: postgres-data
+        target: /var/lib/postgresql/data
+    networks:
+      internal-network:
     healthcheck:
       test: [ "CMD", "pg_isready", "-U", "${DB_USER}" ]
       interval: 5s
@@ -99,8 +138,6 @@ services:
     <<: *airflow-common
     container_name: ${AIRFLOW_API_CONTAINER}
     command: api-server
-    ports:
-      - "${AIRFLOW_API_PORT}:8080"
     healthcheck:
       test: [
         "CMD",
@@ -112,11 +149,16 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: always
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.${AIRFLOW_API_CONTAINER}.loadbalancer.server.port=8080
+      - traefik.http.routers.${AIRFLOW_API_CONTAINER}.entrypoints=web_insecure
+      - traefik.http.routers.${AIRFLOW_API_CONTAINER}.rule=Host(`${AIRFLOW_DOMAIN}`)
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    restart: always
 
   airflow-dag-processor:
     <<: *airflow-common
@@ -164,8 +206,6 @@ services:
       args:
         MLFLOW_DATA_PATH: ${MLFLOW_DATA_PATH}
     container_name: ${MLFLOW_CONTAINER}
-    ports:
-      - "${MLFLOW_API_PORT}:5000"
     healthcheck:
       test: [
         "CMD",
@@ -178,7 +218,17 @@ services:
       retries: 5
       start_period: 30s
     volumes:
-      - mlflow-data:${MLFLOW_DATA_PATH}
+      - type: volume
+        source: mlflow-data
+        target: ${MLFLOW_DATA_PATH}
+    networks:
+      public-network:
+      internal-network:
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.${MLFLOW_CONTAINER}.loadbalancer.server.port=5000
+      - traefik.http.routers.${MLFLOW_CONTAINER}.entrypoints=web_insecure
+      - traefik.http.routers.${MLFLOW_CONTAINER}.rule=Host(`${MLFLOW_DOMAIN}`)
     restart: always
 
   statsd-exporter:
@@ -186,44 +236,74 @@ services:
     container_name: ${STATSD_CONTAINER}
     entrypoint: statsd_exporter
     command:
-      - "--statsd.listen-udp=:${STATSD_LISTEN_PORT}"
-      - "--web.listen-address=:${STATSD_API_PORT}"
+      - "--statsd.listen-udp=:9125"
       - "--log.level=debug"
       - "--statsd.mapping-config=/etc/statsd-exporter/mapping.yml"
     ports:
-      - "${STATSD_API_PORT}:${STATSD_API_PORT}"
-      - "${STATSD_LISTEN_PORT}:${STATSD_LISTEN_PORT}"
+      - "9125:9125"
     expose:
-      - "${STATSD_LISTEN_PORT}/udp"
+      - "9125/udp"
     volumes:
-      - ${STATSD_CONFIG}:/etc/statsd-exporter/mapping.yml:ro
+      - type: bind
+        source: ./configs/statsd/main.yml
+        target: /etc/statsd-exporter/mapping.yml
+        read_only: true
+    networks:
+      public-network:
+      internal-network:
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.${STATSD_CONTAINER}.loadbalancer.server.port=9102
+      - traefik.http.routers.${STATSD_CONTAINER}.entrypoints=web_insecure
+      - traefik.http.routers.${STATSD_CONTAINER}.rule=Host(`${STATSD_DOMAIN}`)
     restart: always
 
   prometheus:
     image: ${PROMETHEUS_IMAGE}
     container_name: ${PROMETHEUS_CONTAINER}
     command:
-      - "--web.listen-address=:${PROMETHEUS_API_PORT}"
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-    ports:
-      - "${PROMETHEUS_API_PORT}:${PROMETHEUS_API_PORT}"
     volumes:
-      - prometheus-data:${PROMETHEUS_DATA_PATH}
-      - ${PROMETHEUS_CONFIG}:/etc/prometheus/prometheus.yml:ro
+      - type: volume
+        source: prometheus-data
+        target: /prometheus
+      - type: bind
+        source: ./configs/prometheus/main.yml
+        target: /etc/prometheus/prometheus.yml
+        read_only: true
+    networks:
+      public-network:
+      internal-network:
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.${PROMETHEUS_CONTAINER}.loadbalancer.server.port=9090
+      - traefik.http.routers.${PROMETHEUS_CONTAINER}.entrypoints=web_insecure
+      - traefik.http.routers.${PROMETHEUS_CONTAINER}.rule=Host(`${PROMETHEUS_DOMAIN}`)
     restart: always
 
   grafana:
     image: ${GRAFANA_IMAGE}
     container_name: ${GRAFANA_CONTAINER}
-    ports:
-      - "${GRAFANA_API_PORT}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
-      - grafana-data:${GRAFANA_DATA_PATH}
-      - ${GRAFANA_DATASOURCES}:/etc/grafana/provisioning/datasources/
+      - type: volume
+        source: grafana-data
+        target: /var/lib/grafana
+      - type: bind
+        source: ./configs/grafana/datasources/
+        target: /etc/grafana/provisioning/datasources/
+        read_only: true
+    networks:
+      public-network:
+      internal-network:
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.${GRAFANA_CONTAINER}.loadbalancer.server.port=3000
+      - traefik.http.routers.${GRAFANA_CONTAINER}.entrypoints=web_insecure
+      - traefik.http.routers.${GRAFANA_CONTAINER}.rule=Host(`${GRAFANA_DOMAIN}`)
     depends_on:
       - prometheus
     restart: always

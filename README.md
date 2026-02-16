@@ -40,12 +40,12 @@ docker-compose up -d
 
 ## Доступ к сервисам
 
-| Сервис     | URL                                            | Логин / Пароль |
-|------------|------------------------------------------------|----------------|
-| Airflow    | [http://localhost:8080](http://localhost:8080) | admin / admin  |
-| MLflow     | [http://localhost:5000](http://localhost:5000) | —              |
-| Prometheus | [http://localhost:9090](http://localhost:9090) | —              |
-| Grafana    | [http://localhost:3000](http://localhost:3000) | admin / admin  |
+| Сервис     | URL                                                        | Логин / Пароль |
+|------------|------------------------------------------------------------|----------------|
+| Airflow    | [http://airflow.localhost](http://airflow.localhost)       | admin / admin  |
+| MLflow     | [http://mlflow.localhost](http://mlflow.localhost)         | —              |
+| Prometheus | [http://prometheus.localhost](http://prometheus.localhost) | —              |
+| Grafana    | [http://grafana.localhost](http://grafana.localhost)       | admin / admin  |
 
 ## Разработка
 
