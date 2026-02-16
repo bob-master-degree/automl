@@ -2,5 +2,6 @@ logs
 plugins
 config
 dags
+scripts
 .DS_Store
 .kaggle.env
