@@ -34,7 +34,7 @@ x-airflow-common: &airflow-common
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/scripts:/opt/airflow/scripts
-    - mlflow-data:${MLFLOW_DATA_PATH}
+    - mlflow-data:/mlflow
   networks:
     public-network:
     internal-network:
@@ -203,8 +203,6 @@ services:
   mlflow:
     build:
       context: docker/mlflow
-      args:
-        MLFLOW_DATA_PATH: ${MLFLOW_DATA_PATH}
     container_name: ${MLFLOW_CONTAINER}
     healthcheck:
       test: [
@@ -220,7 +218,7 @@ services:
     volumes:
       - type: volume
         source: mlflow-data
-        target: ${MLFLOW_DATA_PATH}
+        target: /mlflow
     networks:
       public-network:
       internal-network:
