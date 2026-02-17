@@ -291,8 +291,16 @@ services:
         source: grafana-data
         target: /var/lib/grafana
       - type: bind
-        source: ./configs/grafana/datasources/
+        source: ./configs/grafana/etc/grafana/provisioning/datasources/
         target: /etc/grafana/provisioning/datasources/
+        read_only: true
+      - type: bind
+        source: ./configs/grafana/etc/grafana/provisioning/dashboards/
+        target: /etc/grafana/provisioning/dashboards/
+        read_only: true
+      - type: bind
+        source: ./configs/grafana/var/lib/grafana/dashboards/
+        target: /var/lib/grafana/dashboards/
         read_only: true
     networks:
       public-network:
